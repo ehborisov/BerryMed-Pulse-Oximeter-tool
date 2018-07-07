@@ -18,10 +18,10 @@ RENAME_CHARACTERISTIC_UUID = UUID('00005343-0000-1000-8000-00805F9B34FB')
 
 DATA_READ_TIMEOUT_MS = 20
 
-# Bit number to it's structure
+# Bit number to its structure
 PARSING_SCHEMA = {
     0: BitStruct(signal_strength=BitsInteger(4), has_signal=Flag, probe_unplugged=Flag, pulse_beep=Flag, sync_bit=Flag),
-    1: BitStruct(pleth=BitsInteger(7), sync_bit=Flag, reserved_bit=Bit),
+    1: BitStruct(pleth=BitsInteger(7), sync_bit=Flag),
     2: BitStruct(bargraph=BitsInteger(4), no_finger=Flag, pulse_research=Flag, pr_last_bit=Bit, sync_bit=Flag),
     3: BitStruct(pr_bits=BitsInteger(7), sync_bit=Flag),
     4: BitStruct(spo2=BitsInteger(7), sync_bit=Flag)

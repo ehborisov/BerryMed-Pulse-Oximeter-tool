@@ -3,6 +3,7 @@ import logging
 import signal
 import time
 import itertools
+import binascii
 
 from collections import namedtuple
 from Adafruit_BluefruitLE.services import UART, DeviceInformation
@@ -15,21 +16,20 @@ from datetime import datetime
 DATA_SERVICE_UUID = UUID('49535343-fe7d-4ae5-8fa9-9fafd205e455')
 RECEIVE_CHARACTERISTIC = UUID('49535343-1E4D-4BD9-BA61-23C647249616')
 RENAME_CHARACTERISTIC_UUID = UUID('00005343-0000-1000-8000-00805F9B34FB')
-
 DATA_READ_TIMEOUT_MS = 20
 
 # Bit number to its structure
+# This is the schema of the actual protocol, but we actually don't need all that stuff.
 PARSING_SCHEMA = {
-    0: BitStruct(signal_strength=BitsInteger(4), has_signal=Flag, probe_unplugged=Flag, pulse_beep=Flag, sync_bit=Flag),
-    1: BitStruct(pleth=BitsInteger(7), sync_bit=Flag),
-    2: BitStruct(bargraph=BitsInteger(4), no_finger=Flag, pulse_research=Flag, pr_last_bit=Bit, sync_bit=Flag),
-    3: BitStruct(pr_bits=BitsInteger(7), sync_bit=Flag),
-    4: BitStruct(spo2=BitsInteger(7), sync_bit=Flag)
+    0: BitStruct(sync_bit=Flag, pulse_beep=Flag, probe_unplugged=Flag, has_signal=Flag, signal_strength=BitsInteger(4)),
+    1: BitStruct(sync_bit=Flag, pleth=BitsInteger(7)),
+    2: BitStruct(sync_bit=Flag, pr_last_bit=Bit, pulse_research=Flag, no_finger=Flag, bargraph=BitsInteger(4)),
+    3: BitStruct(sync_bit=Flag, pr_bits=BitsInteger(7)),
+    4: BitStruct(sync_bit=Flag, spo2=BitsInteger(7))
 }
 
-HeartRateData = namedtuple('HeartRateData', ['signal_strength', 'has_signal', 'probe_unplugged', 'pulse_beep', 'pleth',
-                                             'bargraph', 'no_finger', 'pulse_research', 'pulse_rate', 'spo2',
-                                             'timestamp'])
+HeartRateData = namedtuple('HeartRateData', ['signal_strength', 'has_signal', 'pleth', 'bargraph', 'no_finger',
+                                             'pulse_rate', 'spo2', 'timestamp'])
 
 # TODO: add logging configuration
 config_args = {
@@ -159,13 +159,15 @@ class BluetoothPulseSensorReader(object):
                         continue
                     packet_dict = {}
                     try:
-                        for i, schema in PARSING_SCHEMA.items():
-                            byte_data_container = schema.parse(packet[i].to_bytes(1, 'big'))
-                            packet_dict.update({k: v for k, v in byte_data_container.items() if not k.startswith('_')})
-                        pr_start = packet_dict.pop('pr_bits')
-                        pr_end = packet_dict.pop('pr_last_bit')
-                        packet_dict.pop('sync_bit')
-                        packet_dict['pulse_rate'] = (pr_start << 1) + pr_end
+                        byte_1_data_container = PARSING_SCHEMA[0].parse(packet[0].to_bytes(1, 'big'))
+                        byte_3_data_container = PARSING_SCHEMA[2].parse(packet[2].to_bytes(1, 'big'))
+                        packet_dict['signal_strength'] = byte_1_data_container['signal_strength']
+                        packet_dict['has_signal'] = byte_1_data_container['has_signal']
+                        packet_dict['bargraph'] = byte_3_data_container['bargraph']
+                        packet_dict['no_finger'] = byte_3_data_container['no_finger']
+                        packet_dict['spo2'] = packet[4]
+                        packet_dict['pleth'] = packet[1]
+                        packet_dict['pulse_rate'] = packet[3] | ((packet[2] & 0x40) << 1)
                         packet_dict['timestamp'] = str(datetime.now())
                         self._handle_data_callback(HeartRateData(**packet_dict))
                     except Exception as e:
